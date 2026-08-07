@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <cstdint>
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -127,20 +128,31 @@ public:
     }
 };
 
+static inline uint8_t similarity(const uint8_t n1, const uint8_t n2) {
+    return std::numeric_limits<uint8_t>::max()-abs(n1-n2);
+}
 int main() {
 
     const VideoFrames videoFrames("test.webm");
     const FrameData firstFrame = videoFrames.getNextFrame();
     const FrameData secondFrame = videoFrames.getNextFrame();
-    int differenceCounter = 0;
+    std::vector<int16_t> directionX(firstFrame.rgbPixels.size(), 0);
+    std::vector<int16_t> directionY(firstFrame.rgbPixels.size(), 0);
+
     std::cout << "Size of first frame: " << firstFrame.width << "x" << firstFrame.height << std::endl;
     std::cout << "Size of second frame: " << secondFrame.width << "x" << secondFrame.height << std::endl;
-    for (size_t i = 0; i < firstFrame.rgbPixels.size(); ++i) {
-        if (firstFrame.rgbPixels[i] != secondFrame.rgbPixels[i]) {
-            differenceCounter++;
+    constexpr int channels = 3;
+    const int stride = firstFrame.width * channels;
+    for (int y = 1; y < firstFrame.height - 1; ++y) {
+        for (int x = 1; x < firstFrame.width - 1; ++x) {
+            for (int channel = 0; channel < channels; ++channel) {
+                const auto i = static_cast<size_t>(y * stride + x * channels + channel);
+                directionX[i] = static_cast<int16_t>(similarity(firstFrame.rgbPixels[i - channels], secondFrame.rgbPixels[i - channels]))
+                    - static_cast<int16_t>(similarity(firstFrame.rgbPixels[i + channels], secondFrame.rgbPixels[i + channels]));
+                directionY[i] = static_cast<int16_t>(similarity(firstFrame.rgbPixels[i - stride], secondFrame.rgbPixels[i - stride]))
+                    - static_cast<int16_t>(similarity(firstFrame.rgbPixels[i + stride], secondFrame.rgbPixels[i + stride]));
+            }
         }
     }
-    std::cout << "Differed " << differenceCounter
-    << " (" << (static_cast<float>(differenceCounter) / static_cast<float>(firstFrame.rgbPixels.size()) ) * 100  << "% diff)"<< std::endl;
     return 0;
 }
