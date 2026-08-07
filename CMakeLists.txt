@@ -12,7 +12,7 @@ pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
 pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
 pkg_check_modules(SWSCALE REQUIRED IMPORTED_TARGET libswscale)
 
-add_executable(defeatghostfont oldmain.cpp
+add_executable(defeatghostfont
         main.cpp)
 
 # 3. Link the actual FFmpeg libraries to your executable
