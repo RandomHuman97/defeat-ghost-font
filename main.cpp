@@ -129,8 +129,18 @@ public:
 
 int main() {
 
-    VideoFrames videoFrames("test.webm");
-
-    std::cout << videoFrames.getNextFrame().rgbPixels[0];
+    const VideoFrames videoFrames("test.webm");
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
+    int differenceCounter = 0;
+    std::cout << "Size of first frame: " << firstFrame.width << "x" << firstFrame.height << std::endl;
+    std::cout << "Size of second frame: " << secondFrame.width << "x" << secondFrame.height << std::endl;
+    for (size_t i = 0; i < firstFrame.rgbPixels.size(); ++i) {
+        if (firstFrame.rgbPixels[i] != secondFrame.rgbPixels[i]) {
+            differenceCounter++;
+        }
+    }
+    std::cout << "Differed " << differenceCounter
+    << " (" << (static_cast<float>(differenceCounter) / static_cast<float>(firstFrame.rgbPixels.size()) ) * 100  << "% diff)"<< std::endl;
     return 0;
 }
