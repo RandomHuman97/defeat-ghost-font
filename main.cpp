@@ -1,7 +1,9 @@
 #include "main.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -181,6 +183,56 @@ static inline int16_t bestVerticalShiftBlock(const uint8_t* first, const uint8_t
     return bestDy;
 }
 
+double calculateDirectionYVarianceRatio(const std::vector<int16_t>& directionYmap, const int width, const int height) {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Invalid direction variance dimensions");
+    }
+    if (directionYmap.size() != static_cast<size_t>(width * height)) {
+        throw std::runtime_error("Direction Y map does not match dimensions");
+    }
+
+    const int varianceBlockSize = std::max(1, std::min(width, height) / 8);
+
+    std::vector<double> variances;
+    variances.reserve(static_cast<size_t>(ceilDiv(width, varianceBlockSize) * ceilDiv(height, varianceBlockSize)));
+
+    for (int blockY = 0; blockY < height; blockY += varianceBlockSize) {
+        const int blockHeight = std::min(varianceBlockSize, height - blockY);
+        for (int blockX = 0; blockX < width; blockX += varianceBlockSize) {
+            const int blockWidth = std::min(varianceBlockSize, width - blockX);
+            const int sampleCount = blockWidth * blockHeight;
+
+            double sum = 0.0;
+            double sumSquares = 0.0;
+            for (int y = 0; y < blockHeight; ++y) {
+                const size_t rowIndex = static_cast<size_t>((blockY + y) * width + blockX);
+                for (int x = 0; x < blockWidth; ++x) {
+                    const double value = directionYmap[rowIndex + static_cast<size_t>(x)];
+                    sum += value;
+                    sumSquares += value * value;
+                }
+            }
+
+            const double mean = sum / sampleCount;
+            variances.push_back(sumSquares / sampleCount - mean * mean);
+        }
+    }
+
+    const auto percentile = [](std::vector<double> values, const double p) {
+        const size_t index = static_cast<size_t>((values.size() - 1) * p);
+        std::nth_element(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(index), values.end());
+        return values[index];
+    };
+
+    const double p10 = percentile(variances, 0.10);
+    const double p90 = percentile(variances, 0.90);
+    if (p10 == 0.0) {
+        return p90 == 0.0 ? 0.0 : std::numeric_limits<double>::infinity();
+    }
+
+    return p90 / p10;
+}
+
 struct Rgb {
     uint8_t r = 0;
     uint8_t g = 0;
@@ -240,7 +292,7 @@ void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, con
             );
         }
     }
-
+    std::println("Variance for {}: {}",outputFilename,calculateDirectionYVarianceRatio(directionY,directionWidth,directionHeight));
     writeDirectionPpm(outputFilename, directionY, directionWidth, directionHeight, searchRadius);
 }
 void runDirection(const VideoFrames& videoFrames, const int blockSize, const int searchRadius, const std::string& outputFilename) {

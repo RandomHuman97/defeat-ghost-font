@@ -52,3 +52,4 @@ void runDirection(const VideoFrames& videoFrames, int blockSize,  int searchRadi
 // easiest one for commands, does everything itself
 void runDirection(const std::string& filename,  int blockSize,  int searchRadius, const std::string & outputFilename);
 void runDirectionBenchmark(const std::string& filename);
+double calculateDirectionYVarianceRatio(const std::vector<int16_t>& directionYmap, int width, int height);
