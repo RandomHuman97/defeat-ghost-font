@@ -1,3 +1,6 @@
+#include "benchmark.hpp"
+
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <ostream>
@@ -5,7 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <cstdint>
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -30,14 +33,13 @@ struct PaddedFrameData {
 class VideoFrames {
 private:
     int videoStreamIndex = -1;
-    //int frameCounter;
     std::string filename;
-    AVFormatContext *fmtCtx = nullptr;
-    SwsContext *swsCtx = nullptr;
-    AVCodecContext *codecCtx = nullptr;
-    AVPacket *packet = nullptr;
-    AVFrame *frame = nullptr;
-    AVFrame *rgbFrame = nullptr;
+    AVFormatContext* fmtCtx = nullptr;
+    SwsContext* swsCtx = nullptr;
+    AVCodecContext* codecCtx = nullptr;
+    AVPacket* packet = nullptr;
+    AVFrame* frame = nullptr;
+    AVFrame* rgbFrame = nullptr;
 
 public:
     explicit VideoFrames(std::string filename) : filename(std::move(filename)) {
@@ -51,9 +53,9 @@ public:
         if (videoStreamIndex < 0) {
             throw std::runtime_error("Could not find a good stream :/");
         }
-        //get best codec
-        const AVCodecParameters *codec_par = fmtCtx->streams[videoStreamIndex]->codecpar;
-        const AVCodec *codec = avcodec_find_decoder(codec_par->codec_id);
+
+        const AVCodecParameters* codecPar = fmtCtx->streams[videoStreamIndex]->codecpar;
+        const AVCodec* codec = avcodec_find_decoder(codecPar->codec_id);
         if (!codec) {
             throw std::runtime_error("Could not find decoder");
         }
@@ -62,27 +64,24 @@ public:
             throw std::runtime_error("Could not allocate codec context");
         }
 
-        if (avcodec_parameters_to_context(codecCtx, codec_par) < 0) {
+        if (avcodec_parameters_to_context(codecCtx, codecPar) < 0) {
             throw std::runtime_error("Could not copy codec parameters");
         }
         if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
             throw std::runtime_error("Could not open codec");
         }
-        //allocate buffers
+
         packet = av_packet_alloc();
         frame = av_frame_alloc();
         rgbFrame = av_frame_alloc();
-
-        // sws context
         swsCtx = sws_getContext(
-        codecCtx->width, codecCtx->height, codecCtx->pix_fmt,
-        codecCtx->width, codecCtx->height, AV_PIX_FMT_RGB24,
-        SWS_BILINEAR, nullptr, nullptr, nullptr
+            codecCtx->width, codecCtx->height, codecCtx->pix_fmt,
+            codecCtx->width, codecCtx->height, AV_PIX_FMT_RGB24,
+            SWS_BILINEAR, nullptr, nullptr, nullptr
         );
         if (!packet || !frame || !rgbFrame || !swsCtx) {
             throw std::runtime_error("Could not allocate frame conversion state");
         }
-
     }
 
     ~VideoFrames() {
@@ -125,15 +124,12 @@ public:
             frameData.rgbPixels.resize(numBytes);
 
             av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, frameData.rgbPixels.data(), AV_PIX_FMT_RGB24, frameData.width, frameData.height, 1);
-            sws_scale(swsCtx, frame->data, frame->linesize, 0, frameData.height,
-                      rgbFrame->data, rgbFrame->linesize);
+            sws_scale(swsCtx, frame->data, frame->linesize, 0, frameData.height, rgbFrame->data, rgbFrame->linesize);
 
             return frameData;
         }
 
         return {};
-
-
     }
 };
 
@@ -220,16 +216,11 @@ struct Rgb {
 };
 
 static Rgb directionToColor(const int16_t value, const int valueRange) {
-    auto magnitude = static_cast<uint8_t>(static_cast<float>(value)/static_cast<float>(valueRange) * 255);
-    if (value>0) {
-        return {magnitude, 0,0};
+    auto magnitude = static_cast<uint8_t>(static_cast<float>(value) / static_cast<float>(valueRange) * 255);
+    if (value > 0) {
+        return {magnitude, 0, 0};
     }
-    return {0,0,0};
-    /*if (value < 0) {
-        return {0,magnitude,0};
-    }
-    return {50,50,50};
-    */
+    return {0, 0, 0};
 }
 
 static void writeDirectionPpm(const std::string& filename, const std::vector<int16_t>& direction, const int width, const int height, const int searchRadius) {
@@ -246,7 +237,7 @@ static void writeDirectionPpm(const std::string& filename, const std::vector<int
     std::vector<uint8_t> rgbDirection(direction.size() * 3);
     size_t rgbIndex = 0;
     for (const int16_t value : direction) {
-        const Rgb color = directionToColor(value, searchRadius );
+        const Rgb color = directionToColor(value, searchRadius);
         rgbDirection[rgbIndex++] = color.r;
         rgbDirection[rgbIndex++] = color.g;
         rgbDirection[rgbIndex++] = color.b;
@@ -254,21 +245,22 @@ static void writeDirectionPpm(const std::string& filename, const std::vector<int
     out.write(reinterpret_cast<const char*>(rgbDirection.data()), static_cast<std::streamsize>(rgbDirection.size()));
 }
 
-int main() {
-
-    const VideoFrames videoFrames("test.webm");
-    // fetch first frame because for some reason ghost font output vids have a freeze at first frame ig
-    videoFrames.getNextFrame();
-    const FrameData firstFrame = videoFrames.getNextFrame();
-    const FrameData secondFrame = videoFrames.getNextFrame();
-    if (firstFrame.width != secondFrame.width || firstFrame.height != secondFrame.height) {
-        throw std::runtime_error("Frame sizes do not match");
+void runDirection(const std::string& filename, const int blockSize, const int searchRadius, const std::string& outputFilename) {
+    if (blockSize <= 0 || searchRadius < 0) {
+        throw std::runtime_error("Invalid block/search size");
     }
 
-    constexpr int blockSize = 4;
-    constexpr int searchRadius = 12;
-    if constexpr (blockSize <= 0 || searchRadius < 0) {
-        throw std::runtime_error("Invalid block/search size");
+    const VideoFrames videoFrames(filename);
+    // Fetch first frame because ghost font output vids have a freeze at first frame.
+    videoFrames.getNextFrame();
+
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
+    if (firstFrame.width == 0 || firstFrame.height == 0 || secondFrame.width == 0 || secondFrame.height == 0) {
+        throw std::runtime_error("Need at least two decoded frames after the skipped first frame");
+    }
+    if (firstFrame.width != secondFrame.width || firstFrame.height != secondFrame.height) {
+        throw std::runtime_error("Frame sizes do not match");
     }
 
     const PaddedFrameData paddedFirstFrame = padFrame(firstFrame, blockSize, searchRadius);
@@ -279,6 +271,7 @@ int main() {
 
     std::cout << "Size of first frame: " << firstFrame.width << "x" << firstFrame.height << std::endl;
     std::cout << "Size of second frame: " << secondFrame.width << "x" << secondFrame.height << std::endl;
+
     constexpr int channels = 3;
     const int stride = paddedFirstFrame.stride;
     for (int blockY = 0; blockY < directionHeight; ++blockY) {
@@ -296,6 +289,17 @@ int main() {
         }
     }
 
-    writeDirectionPpm("direction_y.ppm", directionY, directionWidth, directionHeight, searchRadius);
+    writeDirectionPpm(outputFilename, directionY, directionWidth, directionHeight, searchRadius);
+}
+
+int main(const int argc, char* argv[]) {
+    if (argc > 1 && std::string(argv[1]) == "--benchmark") {
+        runDirectionBenchmark("testhires.webm");
+        return 0;
+    }
+
+    constexpr int blockSize = 7;
+    constexpr int searchRadius =11;
+    runDirection("test.webm", blockSize, searchRadius, "direction_y.ppm");
     return 0;
 }

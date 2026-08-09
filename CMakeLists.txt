@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(defeatghostfont)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20) # yipee print and format
 
 # 1. Find pkg-config tool
 find_package(PkgConfig REQUIRED)
@@ -13,7 +13,8 @@ pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
 pkg_check_modules(SWSCALE REQUIRED IMPORTED_TARGET libswscale)
 
 add_executable(defeatghostfont
-        main.cpp)
+        main.cpp
+        benchmark.cpp)
 
 # 3. Link the actual FFmpeg libraries to your executable
 target_link_libraries(defeatghostfont PRIVATE
