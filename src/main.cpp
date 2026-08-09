@@ -1,4 +1,3 @@
-#include "../main.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
@@ -9,8 +8,10 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "../CLI11.hpp"
 #include <print>
+#include "main.hpp"
+#include "CLI11.hpp"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -331,9 +332,10 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
         if (varianceValue > 5) {
             std::println("Found good candidate!");
             writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
-            break;
+            return;
         }
     }
+    std::println("No good search radius found :(");
 }
 int main(const int argc, char* argv[]) {
     CLI::App app{"A fast computational solver for motion noise-based fonts"};

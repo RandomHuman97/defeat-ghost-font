@@ -1,4 +1,4 @@
-#include "../main.hpp"
+#include "main.hpp"
 
 #include <format>
 #include <string>
