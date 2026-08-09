@@ -332,6 +332,7 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
         if (varianceValue > 5) {
             std::println("Found good candidate!");
             writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
+            std::println("OCR RESULT: {}", textFromDirectionResult(direction));
             return;
         }
     }
