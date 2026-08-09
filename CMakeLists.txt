@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(defeatghostfont)
 
-set(CMAKE_CXX_STANDARD 20) # yipee print and format
+set(CMAKE_CXX_STANDARD 23) # yipee print and format
 
 # 1. Find pkg-config tool
 find_package(PkgConfig REQUIRED)

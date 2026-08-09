@@ -11,8 +11,8 @@ void runDirectionBenchmark(const std::string& filename) {
     videoFrames.getNextFrame(); // get first one since for some reason ghost font has blank first frame
     FrameData firstFrame = videoFrames.getNextFrame();
     FrameData secondFrame = videoFrames.getNextFrame();
-    for (int blockSize = 2; blockSize < maxBlockSize; ++blockSize) {
-        for (int searchRadius = 2; searchRadius < maxSearchRadius; ++searchRadius) {
+    for (int blockSize = 2; blockSize <= maxBlockSize; ++blockSize) {
+        for (int searchRadius = 2; searchRadius <= maxSearchRadius; ++searchRadius) {
             runDirection(
                 firstFrame,
                 secondFrame,

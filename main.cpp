@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 #include "CLI11.hpp"
+#include <print>
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -270,16 +271,21 @@ int main(const int argc, char* argv[]) {
     argv = app.ensure_utf8(argv);
     std::string filename = "test.webm";
     bool doBenchmark = false;
-    app.add_flag("-b,--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
+    int blockSize = 7;
+    int searchRadius =11;
+    app.add_flag("--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
     app.add_option("file,-f,--file",filename, "input filename")->check(CLI::ExistingFile);
+    app.add_option("-b,--bs,--block-size",blockSize, "block size")->check(CLI::PositiveNumber);
+    app.add_option("-s,--sr,--search-radius",blockSize, "search radius")->check(CLI::PositiveNumber);
+
     CLI11_PARSE(app, argc, argv);
+
+    std::println("Opening: {}",filename);
     if (doBenchmark) {
-        runDirectionBenchmark("testhires.webm");
+        runDirectionBenchmark(filename);
         return 0;
     }
 
-    constexpr int blockSize = 7;
-    constexpr int searchRadius =11;
     runDirection(filename, blockSize, searchRadius, "direction_y.ppm");
     return 0;
 }
