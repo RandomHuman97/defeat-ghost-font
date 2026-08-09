@@ -7,14 +7,13 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include "CLI11.hpp"
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
-
 VideoFrames::VideoFrames(std::string filename) : filename(std::move(filename)) {
         if (avformat_open_input(&fmtCtx, this->filename.c_str(), nullptr, nullptr) < 0) {
             throw std::runtime_error("Could not open input file: " + this->filename);
@@ -223,8 +222,6 @@ void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, con
     const int directionHeight = paddedFirstFrame.height / blockSize;
     std::vector<int16_t> directionY(static_cast<size_t>(directionWidth * directionHeight), 0);
 
-    std::cout << "Size of first frame: " << firstFrame.width << "x" << firstFrame.height << std::endl;
-    std::cout << "Size of second frame: " << secondFrame.width << "x" << secondFrame.height << std::endl;
 
     constexpr int channels = 3;
     const int stride = paddedFirstFrame.stride;
@@ -269,13 +266,20 @@ void runDirection(const std::string& filename, const int blockSize, const int se
     runDirection(videoFrames, blockSize, searchRadius, outputFilename);
 }
 int main(const int argc, char* argv[]) {
-    if (argc > 1 && std::string(argv[1]) == "--benchmark") {
+    CLI::App app{"A fast computational solver for motion noise-based fonts"};
+    argv = app.ensure_utf8(argv);
+    std::string filename = "test.webm";
+    bool doBenchmark = false;
+    app.add_flag("-b,--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
+    app.add_option("file,-f,--file",filename, "input filename")->check(CLI::ExistingFile);
+    CLI11_PARSE(app, argc, argv);
+    if (doBenchmark) {
         runDirectionBenchmark("testhires.webm");
         return 0;
     }
 
     constexpr int blockSize = 7;
     constexpr int searchRadius =11;
-    runDirection("test.webm", blockSize, searchRadius, "direction_y.ppm");
+    runDirection(filename, blockSize, searchRadius, "direction_y.ppm");
     return 0;
 }
