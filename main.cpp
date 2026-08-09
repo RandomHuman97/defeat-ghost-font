@@ -107,15 +107,11 @@ FrameData VideoFrames::getNextFrame() const {
         return {};
 }
 
-static inline int pixelDiff(const uint8_t a, const uint8_t b) {
-    return a > b ? a - b : b - a;
-}
-
-static inline int ceilDiv(const int value, const int divisor) {
+inline int ceilDiv(const int value, const int divisor) {
     return (value + divisor - 1) / divisor;
 }
 
-static inline int clampInt(const int value, const int low, const int high) {
+inline int clampInt(const int value, const int low, const int high) {
     if (value < low) {
         return low;
     }
@@ -152,7 +148,7 @@ static PaddedFrameData padFrame(const FrameData& frame, const int blockSize, con
     return padded;
 }
 
-static inline int stampDiffBlock(const uint8_t* first, const uint8_t* second, const int stride, const int dy, const int blockSize) {
+inline int stampDiffBlock(const uint8_t* first, const uint8_t* second, const int stride, const int dy, const int blockSize, const int stopAtDiff) {
     const uint8_t* secondShifted = second + dy * stride;
     const int rowBytes = blockSize * 3;
     int diff = 0;
@@ -161,19 +157,23 @@ static inline int stampDiffBlock(const uint8_t* first, const uint8_t* second, co
         const uint8_t* firstRow = first + y * stride;
         const uint8_t* secondRow = secondShifted + y * stride;
         for (int i = 0; i < rowBytes; ++i) {
-            diff += pixelDiff(firstRow[i], secondRow[i]);
+            const int delta = static_cast<int>(firstRow[i]) - static_cast<int>(secondRow[i]);
+            diff += delta < 0 ? -delta : delta;
+        }
+        if (diff >= stopAtDiff) {
+            return diff;
         }
     }
 
     return diff;
 }
 
-static inline int16_t bestVerticalShiftBlock(const uint8_t* first, const uint8_t* second, const int stride, const int blockSize, const int searchRadius) {
+inline int16_t bestVerticalShiftBlock(const uint8_t* first, const uint8_t* second, const int stride, const int blockSize, const int searchRadius) {
     int16_t bestDy = static_cast<int16_t>(-searchRadius);
-    int bestDiff = stampDiffBlock(first, second, stride, -searchRadius, blockSize);
+    int bestDiff = stampDiffBlock(first, second, stride, -searchRadius, blockSize, std::numeric_limits<int>::max());
 
     for (int16_t dy = static_cast<int16_t>(-searchRadius + 1); dy <= searchRadius; ++dy) {
-        const int diff = stampDiffBlock(first, second, stride, dy, blockSize);
+        const int diff = stampDiffBlock(first, second, stride, dy, blockSize, bestDiff);
         if (diff < bestDiff) {
             bestDiff = diff;
             bestDy = dy;
