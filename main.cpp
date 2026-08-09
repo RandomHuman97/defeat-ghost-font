@@ -1,7 +1,5 @@
-#include <iostream>
 #include <fstream>
-#include <algorithm>
-#include <limits>
+#include <iostream>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -19,6 +17,14 @@ struct FrameData {
     int width = 0;
     int height = 0;
     std::vector<uint8_t> rgbPixels = {}; // Packed RGB24 buffer
+};
+
+struct PaddedFrameData {
+    int width = 0;
+    int height = 0;
+    int stride = 0;
+    int yPad = 0;
+    std::vector<uint8_t> rgbPixels = {};
 };
 
 class VideoFrames {
@@ -131,139 +137,165 @@ public:
     }
 };
 
-static inline uint8_t similarity(const uint8_t n1, const uint8_t n2) {
-    return std::numeric_limits<uint8_t>::max()-abs(n1-n2);
+static inline int pixelDiff(const uint8_t a, const uint8_t b) {
+    return a > b ? a - b : b - a;
 }
 
-static void writePpm(const std::string& filename, const int width, const int height, const std::vector<uint8_t>& pixels) {
-    std::ofstream output(filename, std::ios::binary);
-    if (!output) {
+static inline int ceilDiv(const int value, const int divisor) {
+    return (value + divisor - 1) / divisor;
+}
+
+static inline int clampInt(const int value, const int low, const int high) {
+    if (value < low) {
+        return low;
+    }
+    if (value > high) {
+        return high;
+    }
+    return value;
+}
+
+static PaddedFrameData padFrame(const FrameData& frame, const int blockSize, const int yPad) {
+    constexpr int channels = 3;
+    PaddedFrameData padded;
+    padded.width = ceilDiv(frame.width, blockSize) * blockSize;
+    padded.height = ceilDiv(frame.height, blockSize) * blockSize;
+    padded.stride = padded.width * channels;
+    padded.yPad = yPad;
+    padded.rgbPixels.resize(static_cast<size_t>((padded.height + yPad * 2) * padded.stride));
+
+    const int sourceStride = frame.width * channels;
+    for (int y = -yPad; y < padded.height + yPad; ++y) {
+        const int sourceY = clampInt(y, 0, frame.height - 1);
+        uint8_t* out = padded.rgbPixels.data() + static_cast<size_t>((y + yPad) * padded.stride);
+        const uint8_t* sourceRow = frame.rgbPixels.data() + static_cast<size_t>(sourceY * sourceStride);
+
+        for (int x = 0; x < padded.width; ++x) {
+            const int sourceX = x < frame.width ? x : frame.width - 1;
+            const uint8_t* sourcePixel = sourceRow + sourceX * channels;
+            out[x * channels] = sourcePixel[0];
+            out[x * channels + 1] = sourcePixel[1];
+            out[x * channels + 2] = sourcePixel[2];
+        }
+    }
+
+    return padded;
+}
+
+static inline int stampDiffBlock(const uint8_t* first, const uint8_t* second, const int stride, const int dy, const int blockSize) {
+    const uint8_t* secondShifted = second + dy * stride;
+    const int rowBytes = blockSize * 3;
+    int diff = 0;
+
+    for (int y = 0; y < blockSize; ++y) {
+        const uint8_t* firstRow = first + y * stride;
+        const uint8_t* secondRow = secondShifted + y * stride;
+        for (int i = 0; i < rowBytes; ++i) {
+            diff += pixelDiff(firstRow[i], secondRow[i]);
+        }
+    }
+
+    return diff;
+}
+
+static inline int16_t bestVerticalShiftBlock(const uint8_t* first, const uint8_t* second, const int stride, const int blockSize, const int searchRadius) {
+    int16_t bestDy = static_cast<int16_t>(-searchRadius);
+    int bestDiff = stampDiffBlock(first, second, stride, -searchRadius, blockSize);
+
+    for (int16_t dy = static_cast<int16_t>(-searchRadius + 1); dy <= searchRadius; ++dy) {
+        const int diff = stampDiffBlock(first, second, stride, dy, blockSize);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestDy = dy;
+        }
+    }
+
+    return bestDy;
+}
+
+struct Rgb {
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+};
+
+static Rgb directionToColor(const int16_t value, const int valueRange) {
+    auto magnitude = static_cast<uint8_t>(static_cast<float>(value)/static_cast<float>(valueRange) * 255);
+    if (value>0) {
+        return {magnitude, 0,0};
+    }
+    return {0,0,0};
+    /*if (value < 0) {
+        return {0,magnitude,0};
+    }
+    return {50,50,50};
+    */
+}
+
+static void writeDirectionPpm(const std::string& filename, const std::vector<int16_t>& direction, const int width, const int height, const int searchRadius) {
+    if (direction.size() != static_cast<size_t>(width * height)) {
+        throw std::runtime_error("Direction buffer does not match output dimensions");
+    }
+
+    std::ofstream out(filename, std::ios::binary);
+    if (!out) {
         throw std::runtime_error("Could not open output file: " + filename);
     }
 
-    output << "P6\n" << width << " " << height << "\n255\n";
-    output.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
-}
-
-static std::vector<uint8_t> toGray(const FrameData& frame) {
-    std::vector<uint8_t> gray(static_cast<size_t>(frame.width) * frame.height);
-    for (size_t pixel = 0, rgb = 0; pixel < gray.size(); ++pixel, rgb += 3) {
-        gray[pixel] = static_cast<uint8_t>((static_cast<int>(frame.rgbPixels[rgb]) +
-            2 * static_cast<int>(frame.rgbPixels[rgb + 1]) +
-            static_cast<int>(frame.rgbPixels[rgb + 2])) >> 2);
+    out << "P6\n" << width << ' ' << height << "\n255\n";
+    std::vector<uint8_t> rgbDirection(direction.size() * 3);
+    size_t rgbIndex = 0;
+    for (const int16_t value : direction) {
+        const Rgb color = directionToColor(value, searchRadius );
+        rgbDirection[rgbIndex++] = color.r;
+        rgbDirection[rgbIndex++] = color.g;
+        rgbDirection[rgbIndex++] = color.b;
     }
-    return gray;
-}
-
-static std::vector<uint8_t> makeBlurredPpm(const std::vector<int32_t>& values, const int width, const int height, const int radius) {
-    std::vector<int32_t> integral(static_cast<size_t>(width + 1) * (height + 1), 0);
-    for (int y = 0; y < height; ++y) {
-        int32_t rowSum = 0;
-        for (int x = 0; x < width; ++x) {
-            rowSum += values[static_cast<size_t>(y) * width + x];
-            integral[static_cast<size_t>(y + 1) * (width + 1) + x + 1] =
-                integral[static_cast<size_t>(y) * (width + 1) + x + 1] + rowSum;
-        }
-    }
-
-    int32_t maxValue = 1;
-    std::vector<int32_t> blurred(values.size(), 0);
-    for (int y = 0; y < height; ++y) {
-        const int y0 = std::max(0, y - radius);
-        const int y1 = std::min(height - 1, y + radius);
-        for (int x = 0; x < width; ++x) {
-            const int x0 = std::max(0, x - radius);
-            const int x1 = std::min(width - 1, x + radius);
-            const int area = (x1 - x0 + 1) * (y1 - y0 + 1);
-            const int32_t sum = integral[static_cast<size_t>(y1 + 1) * (width + 1) + x1 + 1]
-                - integral[static_cast<size_t>(y0) * (width + 1) + x1 + 1]
-                - integral[static_cast<size_t>(y1 + 1) * (width + 1) + x0]
-                + integral[static_cast<size_t>(y0) * (width + 1) + x0];
-            const int32_t value = sum / area;
-            blurred[static_cast<size_t>(y) * width + x] = value;
-            maxValue = std::max(maxValue, value);
-        }
-    }
-
-    std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 3, 0);
-    for (size_t i = 0; i < blurred.size(); ++i) {
-        const auto value = static_cast<uint8_t>(std::clamp((blurred[i] * 255) / maxValue, 0, 255));
-        pixels[i * 3] = value;
-        pixels[i * 3 + 1] = value;
-        pixels[i * 3 + 2] = value;
-    }
-    return pixels;
+    out.write(reinterpret_cast<const char*>(rgbDirection.data()), static_cast<std::streamsize>(rgbDirection.size()));
 }
 
 int main() {
 
-    const VideoFrames videoFrames("testhires.webm");
-    constexpr int numPasses = 6;
-    constexpr int spatialRadius = 4;
-    FrameData previousFrame = videoFrames.getNextFrame();
-    std::vector<uint8_t> previousGray = toGray(previousFrame);
-    const int width = previousFrame.width;
-    const int height = previousFrame.height;
-    std::vector directionXPositive(static_cast<size_t>(width) * height, 0);
-    std::vector directionXNegative(static_cast<size_t>(width) * height, 0);
-    std::vector directionXMagnitude(static_cast<size_t>(width) * height, 0);
-    std::vector directionYPositive(static_cast<size_t>(width) * height, 0);
-    std::vector directionYNegative(static_cast<size_t>(width) * height, 0);
-    std::vector directionYMagnitude(static_cast<size_t>(width) * height, 0);
-    std::vector directionMagnitude(static_cast<size_t>(width) * height, 0);
-
-    std::cout << "Frame size: " << width << "x" << height << std::endl;
-    int completedPasses = 0;
-    for (int pass = 0; pass < numPasses; ++pass) {
-        FrameData nextFrame = videoFrames.getNextFrame();
-        if (nextFrame.rgbPixels.empty()) {
-            break;
-        }
-        if (nextFrame.width != previousFrame.width || nextFrame.height != previousFrame.height) {
-            throw std::runtime_error("Frame size changed while calculating direction vectors");
-        }
-        std::vector<uint8_t> nextGray = toGray(nextFrame);
-
-        for (int y = 1; y < height - 1; ++y) {
-            for (int x = 1; x < width - 1; ++x) {
-                const auto i = static_cast<size_t>(y) * width + x;
-                const int dx = static_cast<int>(similarity(previousGray[i - 1], nextGray[i - 1]))
-                    - static_cast<int>(similarity(previousGray[i + 1], nextGray[i + 1]));
-                const int dy = static_cast<int>(similarity(previousGray[i - width], nextGray[i - width]))
-                    - static_cast<int>(similarity(previousGray[i + width], nextGray[i + width]));
-                if (dx > 0) {
-                    directionXPositive[i] += dx;
-                } else {
-                    directionXNegative[i] -= dx;
-                }
-                if (dy > 0) {
-                    directionYPositive[i] += dy;
-                } else {
-                    directionYNegative[i] -= dy;
-                }
-                directionXMagnitude[i] += std::abs(dx);
-                directionYMagnitude[i] += std::abs(dy);
-                directionMagnitude[i] += std::abs(dx) + std::abs(dy);
-            }
-        }
-
-        previousFrame = std::move(nextFrame);
-        previousGray = std::move(nextGray);
-        ++completedPasses;
+    const VideoFrames videoFrames("test.webm");
+    // fetch first frame because for some reason ghost font output vids have a freeze at first frame ig
+    videoFrames.getNextFrame();
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
+    if (firstFrame.width != secondFrame.width || firstFrame.height != secondFrame.height) {
+        throw std::runtime_error("Frame sizes do not match");
     }
 
-    if (completedPasses == 0) {
-        throw std::runtime_error("Need at least two frames to calculate direction vectors");
+    constexpr int blockSize = 4;
+    constexpr int searchRadius = 12;
+    if constexpr (blockSize <= 0 || searchRadius < 0) {
+        throw std::runtime_error("Invalid block/search size");
     }
 
-    std::cout << "Averaged passes: " << completedPasses << std::endl;
-    writePpm("directionX_positive.ppm", width, height, makeBlurredPpm(directionXPositive, width, height, spatialRadius));
-    writePpm("directionX_negative.ppm", width, height, makeBlurredPpm(directionXNegative, width, height, spatialRadius));
-    writePpm("directionX_magnitude.ppm", width, height, makeBlurredPpm(directionXMagnitude, width, height, spatialRadius));
-    writePpm("directionY_positive.ppm", width, height, makeBlurredPpm(directionYPositive, width, height, spatialRadius));
-    writePpm("directionY_negative.ppm", width, height, makeBlurredPpm(directionYNegative, width, height, spatialRadius));
-    writePpm("directionY_magnitude.ppm", width, height, makeBlurredPpm(directionYMagnitude, width, height, spatialRadius));
-    writePpm("direction_magnitude.ppm", width, height, makeBlurredPpm(directionMagnitude, width, height, spatialRadius));
+    const PaddedFrameData paddedFirstFrame = padFrame(firstFrame, blockSize, searchRadius);
+    const PaddedFrameData paddedSecondFrame = padFrame(secondFrame, blockSize, searchRadius);
+    const int directionWidth = paddedFirstFrame.width / blockSize;
+    const int directionHeight = paddedFirstFrame.height / blockSize;
+    std::vector<int16_t> directionY(static_cast<size_t>(directionWidth * directionHeight), 0);
 
+    std::cout << "Size of first frame: " << firstFrame.width << "x" << firstFrame.height << std::endl;
+    std::cout << "Size of second frame: " << secondFrame.width << "x" << secondFrame.height << std::endl;
+    constexpr int channels = 3;
+    const int stride = paddedFirstFrame.stride;
+    for (int blockY = 0; blockY < directionHeight; ++blockY) {
+        const int y = paddedFirstFrame.yPad + blockY * blockSize;
+        for (int blockX = 0; blockX < directionWidth; ++blockX) {
+            const int x = blockX * blockSize;
+            const size_t rgbIndex = static_cast<size_t>(y * stride + x * channels);
+            directionY[static_cast<size_t>(blockY * directionWidth + blockX)] = bestVerticalShiftBlock(
+                paddedFirstFrame.rgbPixels.data() + rgbIndex,
+                paddedSecondFrame.rgbPixels.data() + rgbIndex,
+                stride,
+                blockSize,
+                searchRadius
+            );
+        }
+    }
+
+    writeDirectionPpm("direction_y.ppm", directionY, directionWidth, directionHeight, searchRadius);
     return 0;
 }
