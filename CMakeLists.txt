@@ -13,8 +13,8 @@ pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
 pkg_check_modules(SWSCALE REQUIRED IMPORTED_TARGET libswscale)
 
 add_executable(defeatghostfont
-        main.cpp
-        benchmark.cpp)
+        src/main.cpp
+        src/benchmark.cpp)
 
 # 3. Link the actual FFmpeg libraries to your executable
 target_link_libraries(defeatghostfont PRIVATE

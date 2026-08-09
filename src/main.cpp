@@ -1,4 +1,4 @@
-#include "main.hpp"
+#include "../main.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "CLI11.hpp"
+#include "../CLI11.hpp"
 #include <print>
 extern "C" {
 #include <libavcodec/avcodec.h>
