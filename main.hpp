@@ -24,6 +24,12 @@ struct PaddedFrameData {
     std::vector<uint8_t> rgbPixels = {};
 };
 
+struct DirectionResult {
+    int width = 0;
+    int height = 0;
+    std::vector<int16_t> directionY = {};
+};
+
 class VideoFrames {
 private:
     int videoStreamIndex = -1;
@@ -46,10 +52,10 @@ public:
 };
 
 // fastest one, good for benchmarks where we only need 2 frames
-void runDirection(const FrameData& firstFrame, const FrameData& secondFrame,  int blockSize,  int searchRadius, const std::string& outputFilename);
+DirectionResult runDirection(const FrameData& firstFrame, const FrameData& secondFrame,  int blockSize,  int searchRadius, const std::string& outputFilename);
 // helper one, just makes it nicer writing the filename one ig
-void runDirection(const VideoFrames& videoFrames, int blockSize,  int searchRadius, const std::string& outputFilename);
+DirectionResult runDirection(const VideoFrames& videoFrames, int blockSize,  int searchRadius, const std::string& outputFilename);
 // easiest one for commands, does everything itself
-void runDirection(const std::string& filename,  int blockSize,  int searchRadius, const std::string & outputFilename);
+DirectionResult runDirection(const std::string& filename,  int blockSize,  int searchRadius, const std::string & outputFilename);
 void runDirectionBenchmark(const std::string& filename);
 double calculateDirectionYVarianceRatio(const std::vector<int16_t>& directionYmap, int width, int height);

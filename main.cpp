@@ -268,12 +268,15 @@ static void writeDirectionPpm(const std::string& filename, const std::vector<int
     }
     out.write(reinterpret_cast<const char*>(rgbDirection.data()), static_cast<std::streamsize>(rgbDirection.size()));
 }
-void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, const int blockSize, const int searchRadius, const std::string& outputFilename) {
+DirectionResult runDirection(const FrameData& firstFrame, const FrameData& secondFrame, const int blockSize, const int searchRadius, const std::string& outputFilename) {
     const PaddedFrameData paddedFirstFrame = padFrame(firstFrame, blockSize, searchRadius);
     const PaddedFrameData paddedSecondFrame = padFrame(secondFrame, blockSize, searchRadius);
     const int directionWidth = paddedFirstFrame.width / blockSize;
     const int directionHeight = paddedFirstFrame.height / blockSize;
-    std::vector<int16_t> directionY(static_cast<size_t>(directionWidth * directionHeight), 0);
+    DirectionResult result;
+    result.width = directionWidth;
+    result.height = directionHeight;
+    result.directionY.resize(static_cast<size_t>(directionWidth * directionHeight));
 
 
     constexpr int channels = 3;
@@ -283,7 +286,7 @@ void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, con
         for (int blockX = 0; blockX < directionWidth; ++blockX) {
             const int x = blockX * blockSize;
             const size_t rgbIndex = static_cast<size_t>(y * stride + x * channels);
-            directionY[static_cast<size_t>(blockY * directionWidth + blockX)] = bestVerticalShiftBlock(
+            result.directionY[static_cast<size_t>(blockY * directionWidth + blockX)] = bestVerticalShiftBlock(
                 paddedFirstFrame.rgbPixels.data() + rgbIndex,
                 paddedSecondFrame.rgbPixels.data() + rgbIndex,
                 stride,
@@ -292,10 +295,11 @@ void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, con
             );
         }
     }
-    std::println("Variance for {}: {}",outputFilename,calculateDirectionYVarianceRatio(directionY,directionWidth,directionHeight));
-    writeDirectionPpm(outputFilename, directionY, directionWidth, directionHeight, searchRadius);
+    if (!outputFilename.empty())
+        writeDirectionPpm(outputFilename, result.directionY, result.width, result.height, searchRadius);
+    return result;
 }
-void runDirection(const VideoFrames& videoFrames, const int blockSize, const int searchRadius, const std::string& outputFilename) {
+DirectionResult runDirection(const VideoFrames& videoFrames, const int blockSize, const int searchRadius, const std::string& outputFilename) {
     if (blockSize <= 0 || searchRadius < 0) {
         throw std::runtime_error("Invalid block/search size");
     }
@@ -311,24 +315,41 @@ void runDirection(const VideoFrames& videoFrames, const int blockSize, const int
         throw std::runtime_error("Frame sizes do not match");
     }
 
-    runDirection(firstFrame,secondFrame,blockSize,searchRadius,outputFilename);
+    return runDirection(firstFrame,secondFrame,blockSize,searchRadius,outputFilename);
 }
 
-void runDirection(const std::string& filename, const int blockSize, const int searchRadius, const std::string & outputFilename) {
+DirectionResult runDirection(const std::string& filename, const int blockSize, const int searchRadius, const std::string & outputFilename) {
     const VideoFrames videoFrames(filename);
-    runDirection(videoFrames, blockSize, searchRadius, outputFilename);
+    return runDirection(videoFrames, blockSize, searchRadius, outputFilename);
+}
+void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename) {
+    for (int searchRadius = 5; searchRadius < 20; ++searchRadius) {
+        // specify blank filename so we dont emit image
+        DirectionResult direction = runDirection(filename,blockSize,searchRadius,"");
+        double varianceValue = calculateDirectionYVarianceRatio(direction.directionY, direction.width, direction.height);
+        std::println("Variance for sr {}: {}", searchRadius, varianceValue);
+        if (varianceValue > 5) {
+            std::println("Found good candidate!");
+            writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
+            break;
+        }
+    }
 }
 int main(const int argc, char* argv[]) {
     CLI::App app{"A fast computational solver for motion noise-based fonts"};
     argv = app.ensure_utf8(argv);
     std::string filename = "test.webm";
+    std::string outputFilename = "direction_y.ppm";
     bool doBenchmark = false;
-    int blockSize = 7;
+    bool doAutoDetect = false;
+    int blockSize = 8;
     int searchRadius =11;
     app.add_flag("--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
     app.add_option("file,-f,--file",filename, "input filename")->check(CLI::ExistingFile);
+    app.add_option("outfile,-o,--output-file",outputFilename, "output filename");
+    app.add_flag("-a,--autodetect", doAutoDetect, "run autodetect for different scan ranges, using specified block size.");
     app.add_option("-b,--bs,--block-size",blockSize, "block size")->check(CLI::PositiveNumber);
-    app.add_option("-s,--sr,--search-radius",blockSize, "search radius")->check(CLI::PositiveNumber);
+    app.add_option("-s,--sr,--search-radius",searchRadius, "search radius")->check(CLI::PositiveNumber);
 
     CLI11_PARSE(app, argc, argv);
 
@@ -337,7 +358,10 @@ int main(const int argc, char* argv[]) {
         runDirectionBenchmark(filename);
         return 0;
     }
-
-    runDirection(filename, blockSize, searchRadius, "direction_y.ppm");
+    if (doAutoDetect) {
+        runAutoDetect(filename,blockSize,outputFilename);
+        return 0;
+    }
+    runDirection(filename, blockSize, searchRadius, outputFilename);
     return 0;
 }
