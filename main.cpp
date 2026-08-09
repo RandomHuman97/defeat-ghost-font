@@ -1,5 +1,4 @@
-#include "benchmark.hpp"
-
+#include "main.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -16,33 +15,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-struct FrameData {
-    int width = 0;
-    int height = 0;
-    std::vector<uint8_t> rgbPixels = {}; // Packed RGB24 buffer
-};
-
-struct PaddedFrameData {
-    int width = 0;
-    int height = 0;
-    int stride = 0;
-    int yPad = 0;
-    std::vector<uint8_t> rgbPixels = {};
-};
-
-class VideoFrames {
-private:
-    int videoStreamIndex = -1;
-    std::string filename;
-    AVFormatContext* fmtCtx = nullptr;
-    SwsContext* swsCtx = nullptr;
-    AVCodecContext* codecCtx = nullptr;
-    AVPacket* packet = nullptr;
-    AVFrame* frame = nullptr;
-    AVFrame* rgbFrame = nullptr;
-
-public:
-    explicit VideoFrames(std::string filename) : filename(std::move(filename)) {
+VideoFrames::VideoFrames(std::string filename) : filename(std::move(filename)) {
         if (avformat_open_input(&fmtCtx, this->filename.c_str(), nullptr, nullptr) < 0) {
             throw std::runtime_error("Could not open input file: " + this->filename);
         }
@@ -82,18 +55,18 @@ public:
         if (!packet || !frame || !rgbFrame || !swsCtx) {
             throw std::runtime_error("Could not allocate frame conversion state");
         }
-    }
+}
 
-    ~VideoFrames() {
+VideoFrames::~VideoFrames() {
         sws_freeContext(swsCtx);
         av_frame_free(&rgbFrame);
         av_frame_free(&frame);
         av_packet_free(&packet);
         avcodec_free_context(&codecCtx);
         avformat_close_input(&fmtCtx);
-    }
+}
 
-    FrameData getNextFrame() const {
+FrameData VideoFrames::getNextFrame() const {
         FrameData frameData;
         while (av_read_frame(fmtCtx, packet) >= 0) {
             if (packet->stream_index != videoStreamIndex) {
@@ -130,8 +103,7 @@ public:
         }
 
         return {};
-    }
-};
+}
 
 static inline int pixelDiff(const uint8_t a, const uint8_t b) {
     return a > b ? a - b : b - a;
@@ -244,25 +216,7 @@ static void writeDirectionPpm(const std::string& filename, const std::vector<int
     }
     out.write(reinterpret_cast<const char*>(rgbDirection.data()), static_cast<std::streamsize>(rgbDirection.size()));
 }
-
-void runDirection(const std::string& filename, const int blockSize, const int searchRadius, const std::string& outputFilename) {
-    if (blockSize <= 0 || searchRadius < 0) {
-        throw std::runtime_error("Invalid block/search size");
-    }
-
-    const VideoFrames videoFrames(filename);
-    // Fetch first frame because ghost font output vids have a freeze at first frame.
-    videoFrames.getNextFrame();
-
-    const FrameData firstFrame = videoFrames.getNextFrame();
-    const FrameData secondFrame = videoFrames.getNextFrame();
-    if (firstFrame.width == 0 || firstFrame.height == 0 || secondFrame.width == 0 || secondFrame.height == 0) {
-        throw std::runtime_error("Need at least two decoded frames after the skipped first frame");
-    }
-    if (firstFrame.width != secondFrame.width || firstFrame.height != secondFrame.height) {
-        throw std::runtime_error("Frame sizes do not match");
-    }
-
+void runDirection(const FrameData& firstFrame, const FrameData& secondFrame, const int blockSize, const int searchRadius, const std::string& outputFilename) {
     const PaddedFrameData paddedFirstFrame = padFrame(firstFrame, blockSize, searchRadius);
     const PaddedFrameData paddedSecondFrame = padFrame(secondFrame, blockSize, searchRadius);
     const int directionWidth = paddedFirstFrame.width / blockSize;
@@ -291,7 +245,29 @@ void runDirection(const std::string& filename, const int blockSize, const int se
 
     writeDirectionPpm(outputFilename, directionY, directionWidth, directionHeight, searchRadius);
 }
+void runDirection(const VideoFrames& videoFrames, const int blockSize, const int searchRadius, const std::string& outputFilename) {
+    if (blockSize <= 0 || searchRadius < 0) {
+        throw std::runtime_error("Invalid block/search size");
+    }
 
+    // Fetch first frame because ghost font output vids have a freeze at first frame.
+    videoFrames.getNextFrame();
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
+    if (firstFrame.width == 0 || firstFrame.height == 0 || secondFrame.width == 0 || secondFrame.height == 0) {
+        throw std::runtime_error("Need at least two decoded frames after the skipped first frame");
+    }
+    if (firstFrame.width != secondFrame.width || firstFrame.height != secondFrame.height) {
+        throw std::runtime_error("Frame sizes do not match");
+    }
+
+    runDirection(firstFrame,secondFrame,blockSize,searchRadius,outputFilename);
+}
+
+void runDirection(const std::string& filename, const int blockSize, const int searchRadius, const std::string & outputFilename) {
+    const VideoFrames videoFrames(filename);
+    runDirection(videoFrames, blockSize, searchRadius, outputFilename);
+}
 int main(const int argc, char* argv[]) {
     if (argc > 1 && std::string(argv[1]) == "--benchmark") {
         runDirectionBenchmark("testhires.webm");
