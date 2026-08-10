@@ -321,9 +321,13 @@ DirectionResult runDirection(const std::string& filename, const int blockSize, c
     return runDirection(videoFrames, blockSize, searchRadius, outputFilename);
 }
 void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename) {
+    const VideoFrames videoFrames(filename);
+    videoFrames.getNextFrame(); // hack bcz ghost font starts blank
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
     for (int searchRadius = 5; searchRadius < 20; ++searchRadius) {
         // specify blank filename so we dont emit image
-        DirectionResult direction = runDirection(filename,blockSize,searchRadius,"");
+        DirectionResult direction = runDirection(firstFrame,secondFrame,blockSize,searchRadius,"");
         double varianceValue = calculateDirectionYVarianceRatio(direction.directionY, direction.width, direction.height);
         std::println("Variance for sr {}: {}", searchRadius, varianceValue);
         if (varianceValue > 5) {
