@@ -320,7 +320,7 @@ DirectionResult runDirection(const std::string& filename, const int blockSize, c
     const VideoFrames videoFrames(filename);
     return runDirection(videoFrames, blockSize, searchRadius, outputFilename);
 }
-void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename) {
+void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename, const int ocrBrickSize) {
     const VideoFrames videoFrames(filename);
     videoFrames.getNextFrame(); // hack bcz ghost font starts blank
     const FrameData firstFrame = videoFrames.getNextFrame();
@@ -334,7 +334,7 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
             std::println("Found good candidate!");
             if (!outputFilename.empty())
                 writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
-            std::println("OCR RESULT: {}", textFromDirectionResult(direction));
+            std::println("OCR RESULT: {}", textFromDirectionResult(direction,ocrBrickSize));
             return;
         }
     }
@@ -349,13 +349,14 @@ int main(const int argc, char* argv[]) {
     bool doAutoDetect = false;
     int blockSize = 8;
     int searchRadius =11;
+    int ocrBrickSize = 5;
     app.add_flag("--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
     app.add_option("file,-f,--file",filename, "input filename")->check(CLI::ExistingFile);
     app.add_option("outfile,-o,--output-file",outputFilename, "output filename");
     app.add_flag("-a,--autodetect", doAutoDetect, "run autodetect for different scan ranges, using specified block size.");
     app.add_option("-b,--bs,--block-size",blockSize, "block size")->check(CLI::PositiveNumber);
     app.add_option("-s,--sr,--search-radius",searchRadius, "search radius")->check(CLI::PositiveNumber);
-
+    app.add_option("-n,--noise,--ocr-brick-size",ocrBrickSize, "denoiser amt / OCR brick size")->check(CLI::PositiveNumber);
     CLI11_PARSE(app, argc, argv);
 
     std::println("Opening: {}",filename);
@@ -364,7 +365,7 @@ int main(const int argc, char* argv[]) {
         return 0;
     }
     if (doAutoDetect) {
-        runAutoDetect(filename,blockSize,outputFilename);
+        runAutoDetect(filename,blockSize,outputFilename, ocrBrickSize);
         return 0;
     }
     if (outputFilename.empty())

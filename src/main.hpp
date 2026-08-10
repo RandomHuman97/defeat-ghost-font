@@ -59,5 +59,4 @@ DirectionResult runDirection(const VideoFrames& videoFrames, int blockSize,  int
 DirectionResult runDirection(const std::string& filename,  int blockSize,  int searchRadius, const std::string & outputFilename);
 void runDirectionBenchmark(const std::string& filename);
 double calculateDirectionYVarianceRatio(const std::vector<int16_t>& directionYmap, int width, int height);
-std::string textFromDirectionResult(const DirectionResult& result);
-void writeDirectionResultOcrImage(const std::string& filename, const DirectionResult& result);
+std::string textFromDirectionResult(const DirectionResult& result, int ocrDenoiseBrickSize);
