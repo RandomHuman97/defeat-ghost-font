@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -111,17 +112,10 @@ FrameData VideoFrames::getNextFrame() const {
 inline int ceilDiv(const int value, const int divisor) {
     return (value + divisor - 1) / divisor;
 }
-
-inline int clampInt(const int value, const int low, const int high) {
-    if (value < low) {
-        return low;
-    }
-    if (value > high) {
-        return high;
-    }
-    return value;
-}
-
+/* pad frame so we don't have to do bounds checks
+new, much faster procedure
+using memcpy to copy whole rows rather than just 1 pixel @ at a time
+*/
 static PaddedFrameData padFrame(const FrameData& frame, const int blockSize, const int yPad) {
     constexpr int channels = 3;
     PaddedFrameData padded;
@@ -132,18 +126,35 @@ static PaddedFrameData padFrame(const FrameData& frame, const int blockSize, con
     padded.rgbPixels.resize(static_cast<size_t>((padded.height + yPad * 2) * padded.stride));
 
     const int sourceStride = frame.width * channels;
-    for (int y = -yPad; y < padded.height + yPad; ++y) {
-        const int sourceY = clampInt(y, 0, frame.height - 1);
+    const int rightPadPixels = padded.width - frame.width;
+
+    for (int y = 0; y < padded.height; ++y) {
+        const int sourceY = std::min(y, frame.height - 1);
         uint8_t* out = padded.rgbPixels.data() + static_cast<size_t>((y + yPad) * padded.stride);
         const uint8_t* sourceRow = frame.rgbPixels.data() + static_cast<size_t>(sourceY * sourceStride);
 
-        for (int x = 0; x < padded.width; ++x) {
-            const int sourceX = x < frame.width ? x : frame.width - 1;
-            const uint8_t* sourcePixel = sourceRow + sourceX * channels;
-            out[x * channels] = sourcePixel[0];
-            out[x * channels + 1] = sourcePixel[1];
-            out[x * channels + 2] = sourcePixel[2];
+        std::memcpy(out, sourceRow, static_cast<size_t>(sourceStride));
+
+        const uint8_t* lastPixel = sourceRow + (frame.width - 1) * channels;
+        uint8_t* rightPad = out + sourceStride;
+        // manually fill right padded pixels
+        for (int x = 0; x < rightPadPixels; ++x) {
+            rightPad[x * channels] = lastPixel[0];
+            rightPad[x * channels + 1] = lastPixel[1];
+            rightPad[x * channels + 2] = lastPixel[2];
         }
+    }
+
+    // pad the top / bottom rows
+    const uint8_t* firstRow = padded.rgbPixels.data() + static_cast<size_t>(yPad * padded.stride);
+    for (int y = 0; y < yPad; ++y) {
+        uint8_t* out = padded.rgbPixels.data() + static_cast<size_t>(y * padded.stride);
+        std::memcpy(out, firstRow, static_cast<size_t>(padded.stride));
+    }
+    const uint8_t* lastRow = padded.rgbPixels.data() + static_cast<size_t>((yPad + padded.height - 1) * padded.stride);
+    for (int y = 0; y < yPad; ++y) {
+        uint8_t* out = padded.rgbPixels.data() + static_cast<size_t>((yPad + padded.height + y) * padded.stride);
+        std::memcpy(out, lastRow, static_cast<size_t>(padded.stride));
     }
 
     return padded;
