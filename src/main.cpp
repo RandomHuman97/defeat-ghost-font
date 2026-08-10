@@ -227,11 +227,8 @@ double calculateDirectionYVarianceRatio(const std::vector<int16_t>& directionYma
 
     const double p10 = percentile(variances, 0.10);
     const double p90 = percentile(variances, 0.90);
-    if (p10 == 0.0) {
-        return p90 == 0.0 ? 0.0 : std::numeric_limits<double>::infinity();
-    }
-
-    return p90 / p10;
+    constexpr double varianceFloor = 0.25;
+    return p90 / std::max(p10, varianceFloor);
 }
 
 struct Rgb {
@@ -331,7 +328,8 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
         std::println("Variance for sr {}: {}", searchRadius, varianceValue);
         if (varianceValue > 5) {
             std::println("Found good candidate!");
-            writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
+            if (!outputFilename.empty())
+                writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
             std::println("OCR RESULT: {}", textFromDirectionResult(direction));
             return;
         }
@@ -342,7 +340,7 @@ int main(const int argc, char* argv[]) {
     CLI::App app{"A fast computational solver for motion noise-based fonts"};
     argv = app.ensure_utf8(argv);
     std::string filename = "test.webm";
-    std::string outputFilename = "direction_y.ppm";
+    std::string outputFilename;
     bool doBenchmark = false;
     bool doAutoDetect = false;
     int blockSize = 8;
@@ -365,6 +363,8 @@ int main(const int argc, char* argv[]) {
         runAutoDetect(filename,blockSize,outputFilename);
         return 0;
     }
+    if (outputFilename.empty())
+        outputFilename = "direction_y.ppm";
     runDirection(filename, blockSize, searchRadius, outputFilename);
     return 0;
 }

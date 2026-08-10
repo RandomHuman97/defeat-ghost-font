@@ -18,7 +18,9 @@ add_executable(defeatghostfont
         src/main.cpp
         src/benchmark.cpp
         src/ocr.cpp)
-
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(defeatghostfont PRIVATE -march=native) # avx
+endif()
 # 3. Link the actual FFmpeg libraries to your executable
 target_link_libraries(defeatghostfont PRIVATE
         PkgConfig::AVFORMAT

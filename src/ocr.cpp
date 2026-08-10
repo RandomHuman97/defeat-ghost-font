@@ -9,7 +9,7 @@
 
 namespace {
 constexpr int ocrMaxImageWidth = 640;
-constexpr int ocrDenoiseBrickSize = 5;
+constexpr int ocrDenoiseBrickSize = 4;
 
 struct PixDeleter {
     void operator()(Pix* pix) const {
@@ -60,7 +60,7 @@ std::unique_ptr<Pix, PixDeleter> scalePixForOcr(std::unique_ptr<Pix, PixDeleter>
         return pix;
     }
 
-    const int scaledWidth = ocrMaxImageWidth;
+    constexpr int scaledWidth = ocrMaxImageWidth;
     const int scaledHeight = std::max(1, height * scaledWidth / width);
     Pix* scaled = pixScaleToSize(pix.get(), scaledWidth, scaledHeight);
     if (!scaled) {
@@ -107,7 +107,9 @@ std::string textFromDirectionResult(const DirectionResult& result) {
     if (api.Init(nullptr, "eng") != 0) {
         throw std::runtime_error("Could not initialize Tesseract OCR");
     }
-
+    api.SetVariable("tessedit_char_whitelist",
+        "QWERTYUGIOPASDFHJKLZXCVBNM!&?,.'-1234567890 "
+        );
     api.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
     api.SetImage(pix.get());
 
