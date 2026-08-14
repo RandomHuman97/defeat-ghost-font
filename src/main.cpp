@@ -290,6 +290,7 @@ DirectionResult runDirection(const FrameData& firstFrame, const FrameData& secon
 
     constexpr int channels = 3;
     const int stride = paddedFirstFrame.stride;
+    #pragma omp parallel for schedule(dynamic)
     for (int blockY = 0; blockY < directionHeight; ++blockY) {
         const int y = paddedFirstFrame.yPad + blockY * blockSize;
         for (int blockX = 0; blockX < directionWidth; ++blockX) {

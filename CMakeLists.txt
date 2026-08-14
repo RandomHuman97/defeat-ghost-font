@@ -21,6 +21,9 @@ add_executable(defeatghostfont
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(defeatghostfont PRIVATE -march=native) # avx
 endif()
+
+# open mp bludz
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 # 3. Link the actual FFmpeg libraries to your executable
 target_link_libraries(defeatghostfont PRIVATE
         PkgConfig::AVFORMAT
