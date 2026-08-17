@@ -375,14 +375,14 @@ int main(const int argc, char* argv[]) {
     std::string filename = "test.webm";
     std::string outputFilename;
     bool doBenchmark = false;
-    bool doAutoDetect = false;
+    bool doManual = false;
     int blockSize = 8;
     int searchRadius =11;
     int ocrBrickSize = 5;
     app.add_flag("--benchmark",doBenchmark, "run a benchmark for different block sizes and search rad.");
     app.add_option("file,-f,--file",filename, "input filename")->check(CLI::ExistingFile);
     app.add_option("outfile,-o,--output-file",outputFilename, "output filename");
-    app.add_flag("-a,--autodetect", doAutoDetect, "run autodetect for different scan ranges, using specified block size.");
+    app.add_flag("-m,--manual", doManual, "run with manual specified parameters rather than a search.");
     app.add_option("-b,--bs,--block-size",blockSize, "block size")->check(CLI::PositiveNumber);
     app.add_option("-s,--sr,--search-radius",searchRadius, "search radius")->check(CLI::PositiveNumber);
     app.add_option("-n,--noise,--ocr-brick-size",ocrBrickSize, "denoiser amt / OCR brick size")->check(CLI::PositiveNumber);
@@ -393,7 +393,7 @@ int main(const int argc, char* argv[]) {
         runDirectionBenchmark(filename);
         return 0;
     }
-    if (doAutoDetect) {
+    if (!doManual) {
         runAutoDetect(filename,blockSize,outputFilename, ocrBrickSize);
         return 0;
     }
