@@ -11,6 +11,9 @@
 #include <vector>
 #include <print>
 #include "main.hpp"
+
+#include <atomic>
+
 #include "CLI11.hpp"
 
 extern "C" {
@@ -290,7 +293,6 @@ DirectionResult runDirection(const FrameData& firstFrame, const FrameData& secon
 
     constexpr int channels = 3;
     const int stride = paddedFirstFrame.stride;
-    #pragma omp parallel for schedule(dynamic)
     for (int blockY = 0; blockY < directionHeight; ++blockY) {
         const int y = paddedFirstFrame.yPad + blockY * blockSize;
         for (int blockX = 0; blockX < directionWidth; ++blockX) {
@@ -337,20 +339,32 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
     videoFrames.getNextFrame(); // hack bcz ghost font starts blank
     const FrameData firstFrame = videoFrames.getNextFrame();
     const FrameData secondFrame = videoFrames.getNextFrame();
+    // set the best search radius b/c lowk we do the same behavior
+    int bestSearchRadius = 0;
+    DirectionResult result;
+    #pragma omp parallel for schedule(dynamic)
     for (int searchRadius = 5; searchRadius < 20; ++searchRadius) {
         // specify blank filename so we dont emit image
         DirectionResult direction = runDirection(firstFrame,secondFrame,blockSize,searchRadius,"");
         double varianceValue = calculateDirectionYVarianceRatio(direction.directionY, direction.width, direction.height);
-        std::println("Variance for sr {}: {}", searchRadius, varianceValue);
-        if (varianceValue > 5) {
-            std::println("Found good candidate!");
-            if (!outputFilename.empty())
-                writeDirectionPpm(outputFilename, direction.directionY, direction.width, direction.height, searchRadius);
-            std::println("OCR RESULT: {}", textFromDirectionResult(direction,ocrBrickSize));
-            return;
+        //std::println("Variance for sr {}: {}", searchRadius, varianceValue);
+        //quick check to not use locks
+        if (varianceValue > 5)
+        #pragma omp critical
+        {
+            bestSearchRadius = searchRadius;
+            result = direction;
         }
     }
-    std::println("No good search radius found :(");
+    if (bestSearchRadius == 0 )
+        std::println("No good search radius found :(");
+    else {
+
+        std::println("Found good candidate {}!",bestSearchRadius);
+        if (!outputFilename.empty())
+            writeDirectionPpm(outputFilename, result.directionY, result.width, result.height, bestSearchRadius);
+        std::println("OCR RESULT: {}", textFromDirectionResult(result,ocrBrickSize));
+    }
 }
 int main(const int argc, char* argv[]) {
     CLI::App app{"A fast computational solver for motion noise-based fonts"};
