@@ -352,8 +352,11 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
         if (varianceValue > 5)
         #pragma omp critical
         {
-            bestSearchRadius = searchRadius;
-            result = direction;
+            // prioritize the best one
+            if (searchRadius < bestSearchRadius || bestSearchRadius == 0) {
+                bestSearchRadius = searchRadius;
+                result = direction;
+            }
         }
     }
     if (bestSearchRadius == 0 )
