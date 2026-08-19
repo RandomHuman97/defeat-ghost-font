@@ -1,12 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(defeatghostfont)
 
-set(CMAKE_CXX_STANDARD 23) # yipee print and format
+set(CMAKE_CXX_STANDARD 23) # yipee print n format
 
-# 1. Find pkg-config tool
 find_package(PkgConfig REQUIRED)
 
-# 2. Locate FFmpeg libraries via pkg-config
 pkg_check_modules(AVFORMAT REQUIRED IMPORTED_TARGET libavformat)
 pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
 pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
@@ -23,8 +21,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # open mp bludz
+
+# use threads on the auto instead of on the processing function itself
+# basically instead of threading processing it just runs as many instances of processing per avail. thread
+# from my testing it's generally the same or slower
+# but MAY be faster
+#add_compile_definitions(AUTO_THREAD_BATCH)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-# 3. Link the actual FFmpeg libraries to your executable
+
 target_link_libraries(defeatghostfont PRIVATE
         PkgConfig::AVFORMAT
         PkgConfig::AVCODEC

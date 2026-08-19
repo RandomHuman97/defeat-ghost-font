@@ -293,6 +293,10 @@ DirectionResult runDirection(const FrameData& firstFrame, const FrameData& secon
 
     constexpr int channels = 3;
     const int stride = paddedFirstFrame.stride;
+
+    #ifndef AUTO_THREAD_BATCH // use openmp here if not doing auto thread batch
+    #pragma omp parallel for default(shared) schedule(auto)
+    #endif
     for (int blockY = 0; blockY < directionHeight; ++blockY) {
         const int y = paddedFirstFrame.yPad + blockY * blockSize;
         for (int blockX = 0; blockX < directionWidth; ++blockX) {
@@ -334,6 +338,7 @@ DirectionResult runDirection(const std::string& filename, const int blockSize, c
     const VideoFrames videoFrames(filename);
     return runDirection(videoFrames, blockSize, searchRadius, outputFilename);
 }
+#ifdef AUTO_THREAD_BATCH
 void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename, const int ocrBrickSize) {
     const VideoFrames videoFrames(filename);
     videoFrames.getNextFrame(); // hack bcz ghost font starts blank
@@ -369,6 +374,31 @@ void runAutoDetect(const std::string& filename, const int blockSize, const std::
         std::println("OCR RESULT: {}", textFromDirectionResult(result,ocrBrickSize));
     }
 }
+#else
+void runAutoDetect(const std::string& filename, const int blockSize, const std::string& outputFilename, const int ocrBrickSize) {
+    const VideoFrames videoFrames(filename);
+    videoFrames.getNextFrame(); // hack bcz ghost font starts blank
+    const FrameData firstFrame = videoFrames.getNextFrame();
+    const FrameData secondFrame = videoFrames.getNextFrame();
+    // set the best search radius b/c lowk we do the same behavior
+    DirectionResult result;
+    for (int searchRadius = 5; searchRadius < 20; ++searchRadius) {
+        // specify blank filename so we dont emit image
+        result=  runDirection(firstFrame,secondFrame,blockSize,searchRadius,"");
+        double varianceValue = calculateDirectionYVarianceRatio(result.directionY, result.width, result.height);
+        //std::println("Variance for sr {}: {}", searchRadius, varianceValue);
+        if (varianceValue > 5){
+            std::println("Found good candidate {}!",searchRadius);
+            if (!outputFilename.empty())
+                writeDirectionPpm(outputFilename, result.directionY, result.width, result.height, searchRadius);
+            std::println("OCR RESULT: {}", textFromDirectionResult(result,ocrBrickSize));
+            return;
+        }
+    }
+    std::println("No good search radius found :(");
+}
+#endif
+
 int main(const int argc, char* argv[]) {
     CLI::App app{"A fast computational solver for motion noise-based fonts"};
     argv = app.ensure_utf8(argv);
